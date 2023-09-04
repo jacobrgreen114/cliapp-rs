@@ -1,2 +1,2 @@
-# cliapp-rs
+# cliapp
 A command line utilities library

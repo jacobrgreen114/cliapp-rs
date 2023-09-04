@@ -1,0 +1,5 @@
+[package]
+name = "cliapp"
+description = "A command line utilities library"
+authors = [ "Jacob Green" ]
+version = "0.0.1-alpha"
