@@ -1,2 +1,2 @@
-# cliapp
+# cliutil
 A command line utilities library
