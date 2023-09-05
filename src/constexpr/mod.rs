@@ -1,6 +1,7 @@
 use std::cell::UnsafeCell;
 use std::env;
 use std::env::Args;
+use std::fmt::Display;
 
 type Command<'a, R> = &'a (dyn Fn() -> R + Sync);
 
@@ -81,6 +82,79 @@ impl<'a> Parameter<'a> {
     fn set_value(&self, value: &str) {}
 }
 
+/**
+
+*/
+trait Executable<R> {
+    fn flags(&self) -> &[Flag];
+    fn params(&self) -> &[Parameter];
+    fn subcommands(&self) -> &[SubCommand<R>];
+    fn command(&self) -> Option<Command<R>>;
+
+    fn execute<T: AsRef<str> + Display>(&self, mut args: impl Iterator<Item = T>) -> R {
+        let flags = self.flags();
+        let params = self.params();
+        let subcommands = self.subcommands();
+        let command = self.command();
+
+        assert!(
+            !(command.is_none() && subcommands.is_empty()),
+            "Application is required to have a default command or at least one subcommand."
+        );
+
+        //let mut args = env::args();
+        //if let None = args.next() {
+        //    panic!("Expected first argument to be program.")
+        //}
+
+        while let Some(arg) = args.next() {
+            if arg.as_ref().starts_with("--") {
+                let arg_slice = &arg.as_ref()[2..];
+
+                if let Some(equals_pos) = arg_slice.find('=') {
+                    let param_name = &arg_slice[0..equals_pos];
+                    let param_value = &arg_slice[equals_pos + 1..];
+
+                    if let Some(param) = params.iter().find(|param| param.long_name == param_name) {
+                        param.set_value(param_value)
+                    } else {
+                        panic!("Unexpected parameter: \"{}\"", arg)
+                    }
+                } else {
+                    if let Some(flag) = flags.iter().find(|flag| flag.long_name == arg_slice) {
+                        flag.mark()
+                    } else {
+                        panic!("Unexpected flag: \"{}\"", arg)
+                    }
+                }
+            } else if arg.as_ref().starts_with("-") {
+                let arg_slice = &arg.as_ref()[1..];
+
+                if let Some(flag) = flags.iter().find(|flag| flag.short_name == arg_slice) {
+                    flag.mark()
+                } else {
+                    panic!("Unexpected flag: \"{}\"", arg)
+                }
+            } else {
+                if let Some(command) = subcommands
+                    .iter()
+                    .find(|command| command.long_name == arg.as_ref())
+                {
+                    return command.execute(args);
+                } else {
+                    panic!("Unexpected command: \"{}\"", arg)
+                }
+            }
+        }
+
+        if let Some(command) = command {
+            return command();
+        } else {
+            panic!("");
+        }
+    }
+}
+
 // #[derive(Debug)]
 pub struct SubCommand<'a, R> {
     //short_name: &'a str,
@@ -110,9 +184,23 @@ impl<'a, R> SubCommand<'a, R> {
             command,
         }
     }
+}
 
-    fn run(&self, args: Args) -> R {
-        todo!()
+impl<R> Executable<R> for SubCommand<'_, R> {
+    fn flags(&self) -> &[Flag] {
+        self.flags
+    }
+
+    fn params(&self) -> &[Parameter] {
+        self.params
+    }
+
+    fn subcommands(&self) -> &[SubCommand<R>] {
+        self.subcommands
+    }
+
+    fn command(&self) -> Option<Command<R>> {
+        self.command
     }
 }
 
@@ -148,65 +236,26 @@ impl<'a, R> Application<'a, R> {
     }
 
     pub fn run(&self) -> R {
-        assert!(
-            !(self.command.is_none() && self.subcommands.is_empty()),
-            "Application is required to have a default command or at least one subcommand."
-        );
-
         let mut args = env::args();
-        if let None = args.next() {
-            panic!("Expected first argument to be program.")
-        }
+        let _binary = args.next();
+        self.execute(args)
+    }
+}
 
-        while let Some(arg) = args.next() {
-            if arg.starts_with("--") {
-                let arg_slice = &arg[2..];
+impl<R> Executable<R> for Application<'_, R> {
+    fn flags(&self) -> &[Flag] {
+        self.flags
+    }
 
-                if let Some(equals_pos) = arg_slice.find('=') {
-                    let param_name = &arg_slice[0..equals_pos];
-                    let param_value = &arg_slice[equals_pos + 1..];
+    fn params(&self) -> &[Parameter] {
+        self.params
+    }
 
-                    if let Some(param) = self
-                        .params
-                        .iter()
-                        .find(|param| param.long_name == param_name)
-                    {
-                        param.set_value(param_value)
-                    } else {
-                        panic!("Unexpected parameter: \"{arg}\"")
-                    }
-                } else {
-                    if let Some(flag) = self.flags.iter().find(|flag| flag.long_name == arg_slice) {
-                        flag.mark()
-                    } else {
-                        panic!("Unexpected flag: \"{arg}\"")
-                    }
-                }
-            } else if arg.starts_with("-") {
-                let arg_slice = &arg[1..];
+    fn subcommands(&self) -> &[SubCommand<R>] {
+        self.subcommands
+    }
 
-                if let Some(flag) = self.flags.iter().find(|flag| flag.short_name == arg_slice) {
-                    flag.mark()
-                } else {
-                    panic!("Unexpected flag: \"{arg}\"")
-                }
-            } else {
-                if let Some(command) = self
-                    .subcommands
-                    .iter()
-                    .find(|command| command.long_name == arg)
-                {
-                    return command.run(args);
-                } else {
-                    panic!("Unexpected command: \"{arg}\"")
-                }
-            }
-        }
-
-        if let Some(command) = self.command {
-            return command();
-        } else {
-            panic!("");
-        }
+    fn command(&self) -> Option<Command<R>> {
+        self.command
     }
 }
