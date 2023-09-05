@@ -1,6 +1,6 @@
-extern crate cliapp;
+extern crate cliutil;
 
-use cliapp::constexpr::*;
+use cliutil::constexpr::*;
 
 static TEST_BOOL: FlagValue = FlagValue::new();
 
@@ -16,7 +16,7 @@ static EXAMPLE_PARAMETERS: &[Parameter] = &[];
 
 static EXAMPLE_SUBCOMMANDS: &[SubCommand<()>] = &[SubCommand::new(
     "headless",
-    "Runs teh program in headless mode",
+    "Runs the program in headless mode",
     &[],
     &[],
     &[],

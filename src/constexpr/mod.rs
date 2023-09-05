@@ -1,14 +1,9 @@
 use std::cell::UnsafeCell;
 use std::env;
-use std::env::Args;
 use std::fmt::Display;
 
 type Command<'a, R> = &'a (dyn Fn() -> R + Sync);
 
-/**
-
-*/
-#[derive(Debug)]
 pub struct FlagValue {
     value: UnsafeCell<bool>,
 }
@@ -31,7 +26,6 @@ impl FlagValue {
 
 unsafe impl Sync for FlagValue {}
 
-#[derive(Debug)]
 pub struct Flag<'a> {
     short_name: &'a str,
     long_name: &'a str,
@@ -63,7 +57,6 @@ impl<'a> Flag<'a> {
     }
 }
 
-// #[derive(Debug)]
 pub struct Parameter<'a> {
     short_name: &'a str,
     long_name: &'a str,
@@ -82,9 +75,6 @@ impl<'a> Parameter<'a> {
     fn set_value(&self, value: &str) {}
 }
 
-/**
-
-*/
 trait Executable<R> {
     fn flags(&self) -> &[Flag];
     fn params(&self) -> &[Parameter];
@@ -155,7 +145,6 @@ trait Executable<R> {
     }
 }
 
-// #[derive(Debug)]
 pub struct SubCommand<'a, R> {
     //short_name: &'a str,
     long_name: &'a str,
@@ -204,9 +193,6 @@ impl<R> Executable<R> for SubCommand<'_, R> {
     }
 }
 
-/**
-    Application
-*/
 pub struct Application<'a, R> {
     name: &'a str,
     description: &'a str,

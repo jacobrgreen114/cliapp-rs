@@ -1,9 +1,12 @@
 [package]
-name = "cliapp"
+name = "cliutil"
 description = "A command line utilities library"
 authors = [ "Jacob Green" ]
 version = "0.0.1-alpha"
+license = "MIT"
+license-file = "LICENSE"
+repository = "https://github.com/jacobrgreen114/cliutil-rs"
 
 [[bin]]
 name = "constexpr-example"
-path = "example/constexpr/src/main.rs"
+path = "examples/constexpr/src/main.rs"
