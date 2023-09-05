@@ -3,3 +3,7 @@ name = "cliapp"
 description = "A command line utilities library"
 authors = [ "Jacob Green" ]
 version = "0.0.1-alpha"
+
+[[bin]]
+name = "constexpr-example"
+path = "example/constexpr/src/main.rs"
