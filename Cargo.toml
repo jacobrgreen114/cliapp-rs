@@ -2,11 +2,9 @@
 name = "cliutil"
 description = "A command line utilities library"
 authors = [ "Jacob Green" ]
-version = "0.0.1-alpha"
-license = "MIT"
+version = "0.0.2"
+license = "Apache-2.0"
 license-file = "LICENSE"
+readme = "README.md"
 repository = "https://github.com/jacobrgreen114/cliutil-rs"
-
-[[bin]]
-name = "constexpr-example"
-path = "examples/constexpr/src/main.rs"
+edition = "2021"

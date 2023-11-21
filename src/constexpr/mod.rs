@@ -1,26 +1,42 @@
-use std::cell::UnsafeCell;
+//
+// Copyright 2023 Jacob R. Green
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+
+use std::cell::Cell;
 use std::env;
 use std::fmt::Display;
 
 type Command<'a, R> = &'a (dyn Fn() -> R + Sync);
 
 pub struct FlagValue {
-    value: UnsafeCell<bool>,
+    value: Cell<bool>,
 }
 
 impl FlagValue {
     pub const fn new() -> Self {
         Self {
-            value: UnsafeCell::new(false),
+            value: Cell::new(false),
         }
     }
 
     pub fn value(&self) -> bool {
-        unsafe { *self.value.get() }
+        unsafe { self.value.get() }
     }
 
     fn mark(&self) {
-        unsafe { *self.value.get() = true }
+        unsafe { self.value.set(true) }
     }
 }
 
@@ -87,20 +103,14 @@ trait Executable<R> {
         let subcommands = self.subcommands();
         let command = self.command();
 
-        assert!(
-            !(command.is_none() && subcommands.is_empty()),
-            "Application is required to have a default command or at least one subcommand."
-        );
-
-        //let mut args = env::args();
-        //if let None = args.next() {
-        //    panic!("Expected first argument to be program.")
-        //}
+        let mut args = args.peekable();
 
         while let Some(arg) = args.next() {
+            // long name
             if arg.as_ref().starts_with("--") {
                 let arg_slice = &arg.as_ref()[2..];
 
+                // parameter
                 if let Some(equals_pos) = arg_slice.find('=') {
                     let param_name = &arg_slice[0..equals_pos];
                     let param_value = &arg_slice[equals_pos + 1..];
@@ -110,22 +120,29 @@ trait Executable<R> {
                     } else {
                         panic!("Unexpected parameter: \"{}\"", arg)
                     }
-                } else {
+                }
+                // flag
+                else {
                     if let Some(flag) = flags.iter().find(|flag| flag.long_name == arg_slice) {
                         flag.mark()
                     } else {
                         panic!("Unexpected flag: \"{}\"", arg)
                     }
                 }
-            } else if arg.as_ref().starts_with("-") {
+            }
+            // short name
+            else if arg.as_ref().starts_with("-") {
                 let arg_slice = &arg.as_ref()[1..];
 
+                // flag
                 if let Some(flag) = flags.iter().find(|flag| flag.short_name == arg_slice) {
                     flag.mark()
                 } else {
                     panic!("Unexpected flag: \"{}\"", arg)
                 }
-            } else {
+            }
+            // command
+            else {
                 if let Some(command) = subcommands
                     .iter()
                     .find(|command| command.long_name == arg.as_ref())
@@ -140,12 +157,13 @@ trait Executable<R> {
         if let Some(command) = command {
             return command();
         } else {
+            // todo - subcommand required
             panic!("");
         }
     }
 }
 
-pub struct SubCommand<'a, R> {
+pub struct SubCommand<'a, R = ()> {
     //short_name: &'a str,
     long_name: &'a str,
     description: &'a str,
@@ -156,22 +174,90 @@ pub struct SubCommand<'a, R> {
 }
 
 impl<'a, R> SubCommand<'a, R> {
-    pub const fn new(
-        long_name: &'a str,
-        description: &'a str,
-        flags: &'a [Flag],
-        params: &'a [Parameter],
-        subcommands: &'a [SubCommand<'a, R>],
-        command: Option<Command<'a, R>>,
-    ) -> Self {
-        Self {
-            long_name,
-            description,
-            flags,
-            params,
-            subcommands,
-            command,
+    pub const fn build() -> SubCommandBuilder<'a, R> {
+        SubCommandBuilder {
+            long_name: None,
+            description: None,
+            flags: None,
+            params: None,
+            subcommands: None,
+            command: None,
         }
+    }
+}
+
+pub struct SubCommandBuilder<'a, R> {
+    //short_name: &'a str,
+    long_name: Option<&'a str>,
+    description: Option<&'a str>,
+    flags: Option<&'a [Flag<'a>]>,
+    params: Option<&'a [Parameter<'a>]>,
+    subcommands: Option<&'a [SubCommand<'a, R>]>,
+    command: Option<Command<'a, R>>,
+}
+
+impl<'a, R> SubCommandBuilder<'a, R> {
+    pub const fn with_long_name(mut self, long_name: &'a str) -> Self {
+        self.long_name = Some(long_name);
+        self
+    }
+
+    pub const fn with_description(mut self, description: &'a str) -> Self {
+        self.description = Some(description);
+        self
+    }
+
+    pub const fn with_flags(mut self, flags: &'a [Flag<'a>]) -> Self {
+        self.flags = Some(flags);
+        self
+    }
+
+    pub const fn with_params(mut self, params: &'a [Parameter<'a>]) -> Self {
+        self.params = Some(params);
+        self
+    }
+
+    pub const fn with_subcommands(mut self, subcommands: &'a [SubCommand<'a, R>]) -> Self {
+        self.subcommands = Some(subcommands);
+        self
+    }
+
+    pub const fn with_command(mut self, command: Command<'a, R>) -> Self {
+        self.command = Some(command);
+        self
+    }
+
+    pub const fn build(self) -> SubCommand<'a, R> {
+        let subcommand = SubCommand {
+            long_name: match self.long_name {
+                Some(long_name) => long_name,
+                None => panic!("Subcommand must have a long name."),
+            },
+            description: match self.description {
+                Some(description) => description,
+                None => "",
+            },
+            flags: match self.flags {
+                Some(flags) => flags,
+                None => &[],
+            },
+            params: match self.params {
+                Some(params) => params,
+                None => &[],
+            },
+            subcommands: match self.subcommands {
+                Some(subcommands) => subcommands,
+                None => &[],
+            },
+            command: self.command,
+        };
+
+        assert!(
+            subcommand.command.is_some() || !subcommand.subcommands.is_empty(),
+            "Subcommand must have either a default command or at least one subcommand."
+        );
+
+        subcommand
     }
 }
 
@@ -193,31 +279,29 @@ impl<R> Executable<R> for SubCommand<'_, R> {
     }
 }
 
-pub struct Application<'a, R> {
+///
+/// Application
+///
+pub struct Application<'a, R = ()> {
     name: &'a str,
     description: &'a str,
     flags: &'a [Flag<'a>],
     params: &'a [Parameter<'a>],
     subcommands: &'a [SubCommand<'a, R>],
     command: Option<Command<'a, R>>,
+    help: bool,
 }
 
 impl<'a, R> Application<'a, R> {
-    pub const fn new(
-        name: &'a str,
-        description: &'a str,
-        flags: &'a [Flag],
-        params: &'a [Parameter],
-        subcommands: &'a [SubCommand<'a, R>],
-        command: Option<Command<'a, R>>,
-    ) -> Self {
-        Self {
-            name,
-            description,
-            flags,
-            params,
-            subcommands,
-            command,
+    pub const fn build() -> ApplicationBuilder<'a, R> {
+        ApplicationBuilder {
+            name: None,
+            description: None,
+            flags: None,
+            params: None,
+            subcommands: None,
+            command: None,
+            help: true,
         }
     }
 
@@ -225,6 +309,85 @@ impl<'a, R> Application<'a, R> {
         let mut args = env::args();
         let _binary = args.next();
         self.execute(args)
+    }
+}
+
+pub struct ApplicationBuilder<'a, R> {
+    name: Option<&'a str>,
+    description: Option<&'a str>,
+    flags: Option<&'a [Flag<'a>]>,
+    params: Option<&'a [Parameter<'a>]>,
+    subcommands: Option<&'a [SubCommand<'a, R>]>,
+    command: Option<Command<'a, R>>,
+    help: bool,
+}
+
+impl<'a, R> ApplicationBuilder<'a, R> {
+    pub const fn with_name(mut self, name: &'a str) -> Self {
+        self.name = Some(name);
+        self
+    }
+
+    pub const fn with_description(mut self, description: &'a str) -> Self {
+        self.description = Some(description);
+        self
+    }
+
+    pub const fn with_flags(mut self, flags: &'a [Flag<'a>]) -> Self {
+        self.flags = Some(flags);
+        self
+    }
+
+    pub const fn with_params(mut self, params: &'a [Parameter<'a>]) -> Self {
+        self.params = Some(params);
+        self
+    }
+
+    pub const fn with_subcommands(mut self, subcommands: &'a [SubCommand<'a, R>]) -> Self {
+        self.subcommands = Some(subcommands);
+        self
+    }
+
+    pub const fn with_command(mut self, command: Command<'a, R>) -> Self {
+        self.command = Some(command);
+        self
+    }
+
+    pub const fn with_help(mut self, help: bool) -> Self {
+        self.help = help;
+        self
+    }
+
+    pub const fn build(self) -> Application<'a, R> {
+        let app = Application {
+            name: match self.name {
+                Some(name) => name,
+                None => "",
+            },
+            description: match self.description {
+                Some(description) => description,
+                None => "",
+            },
+            flags: match self.flags {
+                Some(flags) => flags,
+                None => &[],
+            },
+            params: match self.params {
+                Some(params) => params,
+                None => &[],
+            },
+            subcommands: match self.subcommands {
+                Some(subcommands) => subcommands,
+                None => &[],
+            },
+            command: self.command,
+            help: self.help,
+        };
+        assert!(
+            app.command.is_some() || !app.subcommands.is_empty(),
+            "Application must have either a default command or at least one subcommand."
+        );
+        app
     }
 }
 
