@@ -65,12 +65,12 @@ trait Executable<R> {
 
         while let Some(arg) = args.next() {
             // long name
-            if is_long_name(arg.as_ref()) {
+            if arg.as_ref().is_long_name() {
                 let arg_slice = &arg.as_ref()[2..];
 
                 // parameter
                 if let Some((name, value)) = split_parameter(arg_slice) {
-                    if let Some(param) = find_parameter_by_long_name(params, name) {
+                    if let Some(param) = params.find_by_long_name(name) {
                         param.set_value(format_parameter_value(value))
                     } else {
                         return Err(CommandLineError::UnexpectedParameter(
@@ -80,7 +80,7 @@ trait Executable<R> {
                 }
                 // flag
                 else {
-                    if let Some(flag) = find_flag_by_long_name(flags, arg_slice) {
+                    if let Some(flag) = flags.find_by_long_name(arg_slice) {
                         flag.mark()
                     } else {
                         return Err(CommandLineError::UnexpectedFlag(arg.as_ref().to_string()));
@@ -88,13 +88,13 @@ trait Executable<R> {
                 }
             }
             // short name
-            else if is_short_name(arg.as_ref()) {
+            else if arg.as_ref().is_short_name() {
                 let arg_slice = &arg.as_ref()[1..];
 
                 // flag
-                if let Some(flag) = find_flag_by_short_name(flags, arg_slice) {
+                if let Some(flag) = flags.find_by_short_name(arg_slice) {
                     flag.mark()
-                } else if let Some(param) = find_parameter_by_short_name(params, arg_slice) {
+                } else if let Some(param) = params.find_by_short_name(arg_slice) {
                     if let Some(value) = args.next() {
                         param.set_value(format_parameter_value(value.as_ref()))
                     } else {
@@ -127,14 +127,6 @@ trait Executable<R> {
     }
 }
 
-fn is_long_name(arg: &str) -> bool {
-    arg.starts_with("--")
-}
-
-fn is_short_name(arg: &str) -> bool {
-    arg.starts_with("-")
-}
-
 fn split_parameter(arg: &str) -> Option<(&str, &str)> {
     if let Some(equals_pos) = arg.find('=') {
         Some((&arg[0..equals_pos], &arg[equals_pos + 1..]))
@@ -143,28 +135,44 @@ fn split_parameter(arg: &str) -> Option<(&str, &str)> {
     }
 }
 
-fn find_parameter_by_long_name<'a, 'b>(
-    params: &'a [Parameter<'b>],
-    name: &str,
-) -> Option<&'a Parameter<'b>> {
-    params.iter().find(|param| param.long_name() == name)
-}
-
-fn find_parameter_by_short_name<'a, 'b>(
-    params: &'a [Parameter<'b>],
-    name: &str,
-) -> Option<&'a Parameter<'b>> {
-    params.iter().find(|param| param.short_name() == name)
-}
-
-fn find_flag_by_long_name<'a, 'b>(flags: &'a [Flag<'b>], name: &str) -> Option<&'a Flag<'b>> {
-    flags.iter().find(|flag| flag.long_name() == name)
-}
-
-fn find_flag_by_short_name<'a, 'b>(flags: &'a [Flag<'b>], name: &str) -> Option<&'a Flag<'b>> {
-    flags.iter().find(|flag| flag.short_name() == name)
-}
-
 fn format_parameter_value(value: &str) -> String {
     value.to_string()
+}
+
+trait Argument {
+    fn long_name(&self) -> &str;
+    fn short_name(&self) -> &str;
+}
+
+trait FindExt<T> {
+    fn find_by_long_name<'a>(&'a self, name: &str) -> Option<&'a T>;
+    fn find_by_short_name<'a>(&'a self, name: &str) -> Option<&'a T>;
+}
+
+impl<T> FindExt<T> for [T]
+where
+    T: Argument,
+{
+    fn find_by_long_name<'a>(&'a self, name: &str) -> Option<&'a T> {
+        self.iter().find(|arg| arg.long_name() == name)
+    }
+
+    fn find_by_short_name<'a>(&'a self, name: &str) -> Option<&'a T> {
+        self.iter().find(|arg| arg.short_name() == name)
+    }
+}
+
+trait IsNameExt {
+    fn is_long_name(&self) -> bool;
+    fn is_short_name(&self) -> bool;
+}
+
+impl IsNameExt for str {
+    fn is_long_name(&self) -> bool {
+        self.starts_with("--")
+    }
+
+    fn is_short_name(&self) -> bool {
+        self.starts_with("-")
+    }
 }

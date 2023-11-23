@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+use crate::constexpr::Argument;
+
 /// The value that will be set when a flag is present on the command line.
 pub struct FlagValue {
     value: std::cell::Cell<bool>,
@@ -74,6 +76,16 @@ impl<'a> Flag<'a> {
 
     pub const fn description(&self) -> &str {
         self.description
+    }
+}
+
+impl Argument for Flag<'_> {
+    fn long_name(&self) -> &str {
+        self.long_name
+    }
+
+    fn short_name(&self) -> &str {
+        self.short_name
     }
 }
 

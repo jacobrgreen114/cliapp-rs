@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+use crate::constexpr::Argument;
+
 /// The value that will be set when a parameter is present on the command line.
 pub struct ParameterValue {
     value: std::cell::UnsafeCell<Option<String>>,
@@ -78,6 +80,17 @@ impl<'a> Parameter<'a> {
         self.description
     }
 }
+
+impl Argument for Parameter<'_> {
+    fn long_name(&self) -> &str {
+        self.long_name
+    }
+
+    fn short_name(&self) -> &str {
+        self.short_name
+    }
+}
+
 
 pub struct ParameterBuilder<'a> {
     short_name: Option<&'a str>,
