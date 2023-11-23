@@ -1,7 +1,7 @@
 # cliutil
 Cliutil is planned to be a collection of utilities for command line interfaces.
 
-### Current State
+## Current State
 'cliutil' is currently very alpha.  It is not recommended for use in production code.
 
 #### Apis
@@ -13,6 +13,6 @@ Cliutil is planned to be a collection of utilities for command line interfaces.
     - implement proper error reporting
     - implement command, flag, and parameter name duplication checks
 
-### Future Plans
+## Future Plans
 #### Apis
 - 'cliutil::runtime' - creates a cli app config at runtime. This will be useful for creating very dynamic cli apps.
