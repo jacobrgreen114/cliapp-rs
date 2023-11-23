@@ -1,4 +1,6 @@
 # cliutil
+[![Rust](https://github.com/jacobrgreen114/cliutil-rs/actions/workflows/rust.yml/badge.svg)](https://github.com/jacobrgreen114/cliutil-rs/actions/workflows/rust.yml)
+
 Cliutil is planned to be a collection of utilities for command line interfaces.
 
 ## Current State
