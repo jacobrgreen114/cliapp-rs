@@ -14,6 +14,10 @@
  * limitations under the License.
  */
 
+#[cfg(test)]
+mod tests;
+
+
 use std::cell::{Cell, UnsafeCell};
 use std::env;
 use std::fmt::Display;
@@ -532,6 +536,10 @@ impl<'a, R> Application<'a, R> {
         let mut args = env::args();
         let _binary = args.next();
         self.execute(args)
+    }
+    
+    pub fn execute<T: AsRef<str> + Display>(&self, args: impl Iterator<Item = T>) -> R {
+        Executable::execute(self, args)
     }
 
     pub const fn name(&self) -> &str {
