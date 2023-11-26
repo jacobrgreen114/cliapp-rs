@@ -19,6 +19,7 @@ mod tests;
 
 mod flags;
 
+use std::fmt::Display;
 pub use flags::{Flag, FlagValue};
 
 mod parameters;
@@ -50,6 +51,28 @@ pub enum CommandLineError {
     UnknownCommand(String),
     ExpectedValue(String),
     ExpectedSubcommand,
+}
+
+impl Display for CommandLineError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CommandLineError::UnknownArgument(arg) => {
+                write!(f, "Unknown argument: {}", arg)
+            }
+            CommandLineError::UnexpectedParameter(param) => {
+                write!(f, "Unexpected parameter: {}", param)
+            }
+            CommandLineError::UnknownCommand(cmd) => {
+                write!(f, "Unknown command: {}", cmd)
+            }
+            CommandLineError::ExpectedValue(arg) => {
+                write!(f, "Expected value for argument: {}", arg)
+            }
+            CommandLineError::ExpectedSubcommand => {
+                write!(f, "Expected subcommand")
+            }
+        }
+    }
 }
 
 /// A command line executable.
