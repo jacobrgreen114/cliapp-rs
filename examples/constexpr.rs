@@ -73,7 +73,12 @@ static EXAMPLE_APPLICATION: cli::Application = cli::Application::build()
     .build();
 
 fn main() {
-    let _ = EXAMPLE_APPLICATION.run();
+    match EXAMPLE_APPLICATION.run() {
+        Ok(ret) => ret,
+        Err(err) => {
+            println!("{}", err)
+        }
+    }
 }
 
 fn app_main() {

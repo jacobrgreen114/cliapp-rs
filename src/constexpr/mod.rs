@@ -66,7 +66,7 @@ impl Display for CommandLineError {
                 write!(f, "Unknown command: {}", cmd)
             }
             CommandLineError::ExpectedValue(arg) => {
-                write!(f, "Expected value for argument: {}", arg)
+                write!(f, "Expected value for parameter: {}", arg)
             }
             CommandLineError::ExpectedSubcommand => {
                 write!(f, "Expected subcommand")
@@ -188,23 +188,23 @@ impl<R, Ty: Command<R>> Executable<R> for Ty {
             if arg.is_long_name() {
                 let arg_slice = &arg[2..];
 
-                // flag
-                if let Some(flag) = flags.find_by_long_name(arg_slice) {
-                    flag.mark()
-                }
                 // parameter
-                else if let Some((name, value)) = split_parameter(arg_slice) {
+                if let Some((name, value)) = split_parameter(arg_slice) {
                     if let Some(param) = params.find_by_long_name(name) {
                         param.set_value(format_parameter_value(value))
                     } else {
                         return Err(CommandLineError::UnexpectedParameter(arg.to_string()));
                     }
                 }
+                // flag
+                else if let Some(flag) = flags.find_by_long_name(arg_slice) {
+                    flag.mark()
+                }
                 // unknown argument
                 else {
-                    if self.help_enabled() {
-                        eprintln!("Unknown argument: {}", arg);
-                    }
+                    // if self.help_enabled() {
+                    //     eprintln!("Unknown argument: {}", arg);
+                    // }
                     return Err(CommandLineError::UnknownArgument(arg.to_string()));
                 }
             }
@@ -227,9 +227,9 @@ impl<R, Ty: Command<R>> Executable<R> for Ty {
                 }
                 // unknown argument
                 else {
-                    if self.help_enabled() {
-                        eprintln!("Unknown argument: {}", arg);
-                    }
+                    // if self.help_enabled() {
+                    //     eprintln!("Unknown argument: {}", arg);
+                    // }
                     return Err(CommandLineError::UnknownArgument(arg.to_string()));
                 }
             }
@@ -246,9 +246,9 @@ impl<R, Ty: Command<R>> Executable<R> for Ty {
                 {
                     command.execute(args)
                 } else {
-                    if self.help_enabled() {
-                        eprintln!("Unknown command: {}", arg);
-                    }
+                    // if self.help_enabled() {
+                    //     eprintln!("Unknown command: {}", arg);
+                    // }
                     Err(CommandLineError::UnknownCommand(arg.to_string()))
                 };
             }
