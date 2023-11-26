@@ -17,645 +17,302 @@
 #[cfg(test)]
 mod tests;
 
+mod flags;
 
-use std::cell::{Cell, UnsafeCell};
-use std::env;
 use std::fmt::Display;
+pub use flags::{Flag, FlagValue};
 
-type Command<'a, R> = &'a (dyn Fn() -> R + Sync);
+mod parameters;
+pub use parameters::{Parameter, ParameterValue};
 
-/*
- * Flags
- */
+mod subcommand;
+pub use subcommand::SubCommand;
 
-pub struct FlagValue {
-    value: Cell<bool>,
+mod application;
+pub use application::Application;
+
+pub mod builders {
+    pub use super::flags::FlagBuilder;
+    pub use super::parameters::ParameterBuilder;
+    pub use super::application::ApplicationBuilder;
+    pub use super::subcommand::SubCommandBuilder;
 }
 
-impl FlagValue {
-    pub const fn new() -> Self {
-        Self {
-            value: Cell::new(false),
+type Callback<'a, R> = &'a (dyn Fn() -> R + Sync);
+
+const CONSOLE_WIOTH: usize = 80;
+const NAME_WIDTH: usize = 20;
+const DESCRIPTION_WIDTH: usize = CONSOLE_WIOTH - NAME_WIDTH;
+
+#[derive(Debug)]
+pub enum CommandLineError {
+    UnknownArgument(String),
+    UnexpectedParameter(String),
+    UnknownCommand(String),
+    ExpectedValue(String),
+    ExpectedSubcommand,
+}
+
+impl Display for CommandLineError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CommandLineError::UnknownArgument(arg) => {
+                write!(f, "Unknown argument: {}", arg)
+            }
+            CommandLineError::UnexpectedParameter(param) => {
+                write!(f, "Unexpected parameter: {}", param)
+            }
+            CommandLineError::UnknownCommand(cmd) => {
+                write!(f, "Unknown command: {}", cmd)
+            }
+            CommandLineError::ExpectedValue(arg) => {
+                write!(f, "Expected value for parameter: {}", arg)
+            }
+            CommandLineError::ExpectedSubcommand => {
+                write!(f, "Expected subcommand")
+            }
         }
-    }
-
-    pub fn value(&self) -> bool {
-        self.value.get()
-    }
-
-    fn mark(&self) {
-        self.value.set(true)
-    }
-}
-
-unsafe impl Sync for FlagValue {}
-
-/// A command line boolean flag.
-///
-/// # Example
-/// ```bash
-/// $ ./myapp -{short_name} --{long_name}
-/// ```
-pub struct Flag<'a> {
-    short_name: &'a str,
-    long_name: &'a str,
-    description: &'a str,
-    flag: &'a FlagValue,
-}
-
-impl<'a> Flag<'a> {
-    pub const fn build() -> FlagBuilder<'a> {
-        FlagBuilder {
-            short_name: None,
-            long_name: None,
-            description: None,
-            flag: None,
-        }
-    }
-
-    fn mark(&self) {
-        self.flag.mark();
-    }
-
-    pub const fn short_name(&self) -> &str {
-        self.short_name
-    }
-
-    pub const fn long_name(&self) -> &str {
-        self.long_name
-    }
-
-    pub const fn description(&self) -> &str {
-        self.description
-    }
-}
-
-pub struct FlagBuilder<'a> {
-    short_name: Option<&'a str>,
-    long_name: Option<&'a str>,
-    description: Option<&'a str>,
-    flag: Option<&'a FlagValue>,
-}
-
-impl<'a> FlagBuilder<'a> {
-    pub const fn with_short_name(mut self, short_name: &'a str) -> Self {
-        self.short_name = Some(short_name);
-        self
-    }
-
-    pub const fn with_long_name(mut self, long_name: &'a str) -> Self {
-        self.long_name = Some(long_name);
-        self
-    }
-
-    pub const fn with_description(mut self, description: &'a str) -> Self {
-        self.description = Some(description);
-        self
-    }
-
-    pub const fn with_flag(mut self, flag: &'a FlagValue) -> Self {
-        self.flag = Some(flag);
-        self
-    }
-
-    pub const fn build(self) -> Flag<'a> {
-        let flag = Flag {
-            short_name: match self.short_name {
-                Some(short_name) => short_name,
-                None => "",
-            },
-            long_name: match self.long_name {
-                Some(long_name) => long_name,
-                None => "",
-            },
-            description: match self.description {
-                Some(description) => description,
-                None => "",
-            },
-            flag: match self.flag {
-                Some(flag) => flag,
-                None => panic!("Flag must have a flag value."),
-            },
-        };
-        assert!(
-            !(flag.short_name.is_empty() && flag.long_name.is_empty()),
-            "Flag must at least have a short name or long name."
-        );
-        flag
-    }
-}
-
-pub struct ParameterValue {
-    value: UnsafeCell<Option<String>>,
-}
-
-impl ParameterValue {
-    pub const fn new() -> Self {
-        Self {
-            value: UnsafeCell::new(None),
-        }
-    }
-
-    pub fn value(&self) -> Option<&str> {
-        unsafe { (&*self.value.get()).as_ref().map(|s| s.as_str()) }
-    }
-
-    fn set_value(&self, value: String) {
-        unsafe {
-            self.value.get().replace(Some(value));
-        }
-    }
-}
-
-unsafe impl Sync for ParameterValue {}
-
-/// A command line string parameter.
-///
-/// # Example
-/// ```bash
-/// $ ./myapp -{short_name} {value} --{long_name}={value}
-/// ```
-pub struct Parameter<'a> {
-    short_name: &'a str,
-    long_name: &'a str,
-    description: &'a str,
-    value: &'a ParameterValue,
-}
-
-impl<'a> Parameter<'a> {
-    pub const fn build() -> ParameterBuilder<'a> {
-        ParameterBuilder {
-            short_name: None,
-            long_name: None,
-            description: None,
-            parameter: None,
-        }
-    }
-
-    fn set_value(&self, value: String) {
-        self.value.set_value(value);
-    }
-
-    pub const fn short_name(&self) -> &str {
-        self.short_name
-    }
-
-    pub const fn long_name(&self) -> &str {
-        self.long_name
-    }
-
-    pub const fn description(&self) -> &str {
-        self.description
-    }
-}
-
-pub struct ParameterBuilder<'a> {
-    short_name: Option<&'a str>,
-    long_name: Option<&'a str>,
-    description: Option<&'a str>,
-    parameter: Option<&'a ParameterValue>,
-}
-
-impl<'a> ParameterBuilder<'a> {
-    pub const fn with_short_name(mut self, short_name: &'a str) -> Self {
-        self.short_name = Some(short_name);
-        self
-    }
-
-    pub const fn with_long_name(mut self, long_name: &'a str) -> Self {
-        self.long_name = Some(long_name);
-        self
-    }
-
-    pub const fn with_description(mut self, description: &'a str) -> Self {
-        self.description = Some(description);
-        self
-    }
-
-    pub const fn with_parameter(mut self, value: &'a ParameterValue) -> Self {
-        self.parameter = Some(value);
-        self
-    }
-
-    pub const fn build(self) -> Parameter<'a> {
-        let param = Parameter {
-            short_name: match self.short_name {
-                Some(short_name) => short_name,
-                None => "",
-            },
-            long_name: match self.long_name {
-                Some(long_name) => long_name,
-                None => "",
-            },
-            description: match self.description {
-                Some(description) => description,
-                None => "",
-            },
-            value: match self.parameter {
-                Some(value) => value,
-                None => panic!("Parameter must have a value."),
-            },
-        };
-        assert!(
-            !(param.short_name.is_empty() && param.long_name.is_empty()),
-            "Parameter must at least have a short name or long name."
-        );
-        param
     }
 }
 
 /// A command line executable.
-trait Executable<R> {
+trait Command<R> {
+    fn name(&self) -> &str;
+    fn description(&self) -> &str;
+
     fn flags(&self) -> &[Flag];
     fn parameters(&self) -> &[Parameter];
     fn subcommands(&self) -> &[SubCommand<R>];
-    fn command(&self) -> Option<Command<R>>;
+    fn command(&self) -> Option<Callback<R>>;
 
-    fn execute<T: AsRef<str> + Display>(&self, mut args: impl Iterator<Item = T>) -> R {
+    fn help_enabled(&self) -> bool;
+
+    fn print_help(&self) {
+        let name = self.name();
+        let description = self.description();
+        let flags = self.flags();
+        let parameters = self.parameters();
+        let subcommands = self.subcommands();
+
+        println!("{}", name);
+        println!("{}", description);
+        println!();
+
+        if !flags.is_empty() {
+            println!("Flags:");
+            for flag in flags {
+                print_help_for_argument(flag)
+            }
+            println!();
+        }
+
+        if !parameters.is_empty() {
+            println!("Parameters:");
+            for param in parameters {
+                print_help_for_argument(param)
+            }
+            println!();
+        }
+
+        if !subcommands.is_empty() {
+            println!("Subcommands:");
+            for subcommand in subcommands {
+                print_help_for_subcommand(subcommand)
+            }
+            println!();
+        }
+    }
+}
+
+fn print_help_for_argument<A: Argument>(a: &A) {
+    let short_name = a.short_name();
+    let long_name = a.long_name();
+    let description = a.description();
+    let mut line_index = 0;
+
+    print!("  ");
+    line_index += 2;
+    if !short_name.is_empty() {
+        print!("-{}", short_name);
+        line_index += short_name.len() + 1;
+        if !long_name.is_empty() {
+            print!(", ");
+            line_index += 2;
+        }
+    }
+
+    if !long_name.is_empty() {
+        print!("--{}", long_name);
+        line_index += long_name.len() + 2;
+    }
+
+    print!("{}", " ".repeat(NAME_WIDTH.saturating_sub(line_index)));
+
+    let desc_len = DESCRIPTION_WIDTH.min(description.len());
+
+    println!("{}", &description[..desc_len]);
+}
+
+fn print_help_for_subcommand<R>(subcommand: &SubCommand<R>) {
+    print!("  {}", subcommand.long_name());
+    print!(
+        "{}",
+        " ".repeat(NAME_WIDTH.saturating_sub(subcommand.long_name().len() + 2))
+    );
+
+    let desc_len = DESCRIPTION_WIDTH.min(subcommand.description().len());
+    println!("{}", &subcommand.description()[..desc_len]);
+}
+
+trait Executable<R> {
+    fn execute<T: AsRef<str>, It: Iterator<Item = T>>(
+        &self,
+        args: It,
+    ) -> Result<R, CommandLineError>;
+}
+
+impl<R, Ty: Command<R>> Executable<R> for Ty {
+    fn execute<T: AsRef<str>, It: Iterator<Item = T>>(
+        &self,
+        mut args: It,
+    ) -> Result<R, CommandLineError> {
         let flags = self.flags();
         let params = self.parameters();
         let subcommands = self.subcommands();
         let command = self.command();
 
         while let Some(arg) = args.next() {
-            // long name
-            if arg.as_ref().starts_with("--") {
-                let arg_slice = &arg.as_ref()[2..];
+            let arg = arg.as_ref();
+
+            // long name (--example)
+            if arg.is_long_name() {
+                let arg_slice = &arg[2..];
 
                 // parameter
-                if let Some(equals_pos) = arg_slice.find('=') {
-                    let param_name = &arg_slice[0..equals_pos];
-                    let param_value = &arg_slice[equals_pos + 1..];
-
-                    if let Some(param) = params.iter().find(|param| param.long_name == param_name) {
-                        param.set_value(param_value.to_string())
+                if let Some((name, value)) = split_parameter(arg_slice) {
+                    if let Some(param) = params.find_by_long_name(name) {
+                        param.set_value(format_parameter_value(value))
                     } else {
-                        panic!("Unexpected parameter: \"{}\"", arg)
+                        return Err(CommandLineError::UnexpectedParameter(arg.to_string()));
                     }
                 }
                 // flag
+                else if let Some(flag) = flags.find_by_long_name(arg_slice) {
+                    flag.mark()
+                }
+                // unknown argument
                 else {
-                    if let Some(flag) = flags.iter().find(|flag| flag.long_name == arg_slice) {
-                        flag.mark()
-                    } else {
-                        panic!("Unexpected flag: \"{}\"", arg)
-                    }
+                    // if self.help_enabled() {
+                    //     eprintln!("Unknown argument: {}", arg);
+                    // }
+                    return Err(CommandLineError::UnknownArgument(arg.to_string()));
                 }
             }
-            // short name
-            else if arg.as_ref().starts_with("-") {
-                let arg_slice = &arg.as_ref()[1..];
+            // short name (-e)
+            else if arg.is_short_name() {
+                let arg_slice = &arg[1..];
 
                 // flag
-                if let Some(flag) = flags.iter().find(|flag| flag.short_name == arg_slice) {
+                if let Some(flag) = flags.find_by_short_name(arg_slice) {
                     flag.mark()
-                } else if let Some(param) =
-                    params.iter().find(|param| param.short_name == arg_slice)
-                {
-                    if let Some(param_value) = args.next() {
-                        param.set_value(param_value.to_string())
+                }
+                // parameter
+                else if let Some(param) = params.find_by_short_name(arg_slice) {
+                    if let Some(value) = args.next() {
+                        let value = value.as_ref();
+                        param.set_value(format_parameter_value(value))
                     } else {
-                        panic!("Expected value for parameter: \"{}\"", arg)
+                        return Err(CommandLineError::ExpectedValue(arg.to_string()));
                     }
-                } else {
-                    panic!("Unexpected flag: \"{}\"", arg)
+                }
+                // unknown argument
+                else {
+                    // if self.help_enabled() {
+                    //     eprintln!("Unknown argument: {}", arg);
+                    // }
+                    return Err(CommandLineError::UnknownArgument(arg.to_string()));
                 }
             }
             // command
             else {
-                if let Some(command) = subcommands
-                    .iter()
-                    .find(|command| command.long_name == arg.as_ref())
-                {
-                    return command.execute(args);
-                } else {
-                    panic!("Unexpected command: \"{}\"", arg)
+                if self.help_enabled() && arg == "help" {
+                    self.print_help();
+                    std::process::exit(0)
                 }
+
+                return if let Some(command) = subcommands
+                    .iter()
+                    .find(|command| command.long_name() == arg)
+                {
+                    command.execute(args)
+                } else {
+                    // if self.help_enabled() {
+                    //     eprintln!("Unknown command: {}", arg);
+                    // }
+                    Err(CommandLineError::UnknownCommand(arg.to_string()))
+                };
             }
         }
 
         if let Some(command) = command {
-            return command();
+            return Ok(command());
         } else {
-            // todo - subcommand required
-            panic!("");
+            return Err(CommandLineError::ExpectedSubcommand);
         }
     }
 }
 
-/// A command line subcommand.
-///
-/// # Example
-/// ```bash
-/// $ ./myapp {subcommand} --{flag} --{parameter}={value}
-/// ```
-pub struct SubCommand<'a, R = ()> {
-    //short_name: &'a str,
-    long_name: &'a str,
-    description: &'a str,
-    flags: &'a [Flag<'a>],
-    params: &'a [Parameter<'a>],
-    subcommands: &'a [SubCommand<'a, R>],
-    command: Option<Command<'a, R>>,
-}
-
-impl<'a, R> SubCommand<'a, R> {
-    pub const fn build() -> SubCommandBuilder<'a, R> {
-        SubCommandBuilder {
-            long_name: None,
-            description: None,
-            flags: None,
-            params: None,
-            subcommands: None,
-            command: None,
-        }
-    }
-
-    pub const fn long_name(&self) -> &str {
-        self.long_name
-    }
-
-    pub const fn description(&self) -> &str {
-        self.description
-    }
-
-    pub const fn flags(&self) -> &[Flag] {
-        self.flags
-    }
-
-    pub const fn parameters(&self) -> &[Parameter] {
-        self.params
-    }
-
-    pub const fn subcommands(&self) -> &[SubCommand<R>] {
-        self.subcommands
+#[inline(always)]
+fn split_parameter(arg: &str) -> Option<(&str, &str)> {
+    if let Some(equals_pos) = arg.find('=') {
+        Some((&arg[0..equals_pos], &arg[equals_pos + 1..]))
+    } else {
+        None
     }
 }
 
-pub struct SubCommandBuilder<'a, R> {
-    //short_name: &'a str,
-    long_name: Option<&'a str>,
-    description: Option<&'a str>,
-    flags: Option<&'a [Flag<'a>]>,
-    params: Option<&'a [Parameter<'a>]>,
-    subcommands: Option<&'a [SubCommand<'a, R>]>,
-    command: Option<Command<'a, R>>,
+fn format_parameter_value(value: &str) -> String {
+    value.to_string()
 }
 
-impl<'a, R> SubCommandBuilder<'a, R> {
-    pub const fn with_long_name(mut self, long_name: &'a str) -> Self {
-        self.long_name = Some(long_name);
-        self
+trait Argument {
+    fn long_name(&self) -> &str;
+    fn short_name(&self) -> &str;
+    fn description(&self) -> &str;
+}
+
+trait FindExt<T> {
+    fn find_by_long_name(&self, name: &str) -> Option<&T>;
+    fn find_by_short_name(&self, name: &str) -> Option<&T>;
+}
+
+impl<T> FindExt<T> for [T]
+where
+    T: Argument,
+{
+    #[inline(always)]
+    fn find_by_long_name(&self, name: &str) -> Option<&T> {
+        self.iter().find(|arg| arg.long_name() == name)
     }
 
-    pub const fn with_description(mut self, description: &'a str) -> Self {
-        self.description = Some(description);
-        self
-    }
-
-    pub const fn with_flags(mut self, flags: &'a [Flag<'a>]) -> Self {
-        self.flags = Some(flags);
-        self
-    }
-
-    pub const fn with_parameters(mut self, params: &'a [Parameter<'a>]) -> Self {
-        self.params = Some(params);
-        self
-    }
-
-    pub const fn with_subcommands(mut self, subcommands: &'a [SubCommand<'a, R>]) -> Self {
-        self.subcommands = Some(subcommands);
-        self
-    }
-
-    pub const fn with_command(mut self, command: Command<'a, R>) -> Self {
-        self.command = Some(command);
-        self
-    }
-
-    pub const fn build(self) -> SubCommand<'a, R> {
-        let subcommand = SubCommand {
-            long_name: match self.long_name {
-                Some(long_name) => long_name,
-                None => panic!("Subcommand must have a long name."),
-            },
-            description: match self.description {
-                Some(description) => description,
-                None => "",
-            },
-            flags: match self.flags {
-                Some(flags) => flags,
-                None => &[],
-            },
-            params: match self.params {
-                Some(params) => params,
-                None => &[],
-            },
-            subcommands: match self.subcommands {
-                Some(subcommands) => subcommands,
-                None => &[],
-            },
-            command: self.command,
-        };
-
-        assert!(
-            subcommand.command.is_some() || !subcommand.subcommands.is_empty(),
-            "Subcommand must have either a default command or at least one subcommand."
-        );
-
-        subcommand
+    #[inline(always)]
+    fn find_by_short_name(&self, name: &str) -> Option<&T> {
+        self.iter().find(|arg| arg.short_name() == name)
     }
 }
 
-impl<R> Executable<R> for SubCommand<'_, R> {
-    fn flags(&self) -> &[Flag] {
-        self.flags
-    }
-
-    fn parameters(&self) -> &[Parameter] {
-        self.params
-    }
-
-    fn subcommands(&self) -> &[SubCommand<R>] {
-        self.subcommands
-    }
-
-    fn command(&self) -> Option<Command<R>> {
-        self.command
-    }
+trait IsNameExt {
+    fn is_long_name(&self) -> bool;
+    fn is_short_name(&self) -> bool;
 }
 
-/// The root of a console application.
-///
-/// # Example
-/// Application with a default command:
-///
-/// ```rust
-/// use cliutil::constexpr as cli;
-///
-/// static EXAMPLE_APPLICATION: cli::Application =
-///     cli::Application::build()
-///         .with_name("Example Cli App")
-///         .with_description("An example CLI application")
-///         .with_command(&app_main)
-///         .build();  
-///
-/// fn main() {
-///     EXAMPLE_APPLICATION.run()
-/// }
-///  
-/// fn app_main() {
-///     println!("Hello, world!");
-/// }
-/// ```
-pub struct Application<'a, R = ()> {
-    name: &'a str,
-    description: &'a str,
-    flags: &'a [Flag<'a>],
-    params: &'a [Parameter<'a>],
-    subcommands: &'a [SubCommand<'a, R>],
-    command: Option<Command<'a, R>>,
-    // help: bool,
-    // version: bool,
-}
-
-impl<'a, R> Application<'a, R> {
-    pub const fn build() -> ApplicationBuilder<'a, R> {
-        ApplicationBuilder {
-            name: None,
-            description: None,
-            flags: None,
-            params: None,
-            subcommands: None,
-            command: None,
-            //help: true,
-        }
+impl IsNameExt for str {
+    #[inline(always)]
+    fn is_long_name(&self) -> bool {
+        self.starts_with("--")
     }
-
-    pub fn run(&self) -> R {
-        let mut args = env::args();
-        let _binary = args.next();
-        self.execute(args)
-    }
-    
-    pub fn execute<T: AsRef<str> + Display>(&self, args: impl Iterator<Item = T>) -> R {
-        Executable::execute(self, args)
-    }
-
-    pub const fn name(&self) -> &str {
-        self.name
-    }
-
-    pub const fn description(&self) -> &str {
-        self.description
-    }
-
-    pub const fn flags(&self) -> &[Flag] {
-        self.flags
-    }
-
-    pub const fn parameters(&self) -> &[Parameter] {
-        self.params
-    }
-
-    pub const fn subcommands(&self) -> &[SubCommand<R>] {
-        self.subcommands
-    }
-}
-
-pub struct ApplicationBuilder<'a, R> {
-    name: Option<&'a str>,
-    description: Option<&'a str>,
-    flags: Option<&'a [Flag<'a>]>,
-    params: Option<&'a [Parameter<'a>]>,
-    subcommands: Option<&'a [SubCommand<'a, R>]>,
-    command: Option<Command<'a, R>>,
-    // help: bool,
-}
-
-impl<'a, R> ApplicationBuilder<'a, R> {
-    pub const fn with_name(mut self, name: &'a str) -> Self {
-        self.name = Some(name);
-        self
-    }
-
-    pub const fn with_description(mut self, description: &'a str) -> Self {
-        self.description = Some(description);
-        self
-    }
-
-    pub const fn with_flags(mut self, flags: &'a [Flag<'a>]) -> Self {
-        self.flags = Some(flags);
-        self
-    }
-
-    pub const fn with_parameters(mut self, params: &'a [Parameter<'a>]) -> Self {
-        self.params = Some(params);
-        self
-    }
-
-    pub const fn with_subcommands(mut self, subcommands: &'a [SubCommand<'a, R>]) -> Self {
-        self.subcommands = Some(subcommands);
-        self
-    }
-
-    pub const fn with_command(mut self, command: Command<'a, R>) -> Self {
-        self.command = Some(command);
-        self
-    }
-
-    // pub const fn with_help(mut self, help: bool) -> Self {
-    //     self.help = help;
-    //     self
-    // }
-
-    pub const fn build(self) -> Application<'a, R> {
-        let app = Application {
-            name: match self.name {
-                Some(name) => name,
-                None => "",
-            },
-            description: match self.description {
-                Some(description) => description,
-                None => "",
-            },
-            flags: match self.flags {
-                Some(flags) => flags,
-                None => &[],
-            },
-            params: match self.params {
-                Some(params) => params,
-                None => &[],
-            },
-            subcommands: match self.subcommands {
-                Some(subcommands) => subcommands,
-                None => &[],
-            },
-            command: self.command,
-            // help: self.help,
-        };
-        assert!(
-            app.command.is_some() || !app.subcommands.is_empty(),
-            "Application must have either a default command or at least one subcommand."
-        );
-        app
-    }
-}
-
-impl<R> Executable<R> for Application<'_, R> {
-    fn flags(&self) -> &[Flag] {
-        self.flags
-    }
-
-    fn parameters(&self) -> &[Parameter] {
-        self.params
-    }
-
-    fn subcommands(&self) -> &[SubCommand<R>] {
-        self.subcommands
-    }
-
-    fn command(&self) -> Option<Command<R>> {
-        self.command
+    #[inline(always)]
+    fn is_short_name(&self) -> bool {
+        self.starts_with("-")
     }
 }
