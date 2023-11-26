@@ -20,23 +20,27 @@ use std::env;
 
 /// The root of a console application.
 ///
-/// # Example
-/// Application with a default command:
+/// # Generic Parameters
+/// [`R`] - The return type of the application.
 ///
+/// # Example
 /// ```rust
 /// use cliutil::constexpr as cli;
 ///
 /// static EXAMPLE_APPLICATION: cli::Application =
 ///     cli::Application::build()
-///         .with_name("Example Cli App")
-///         .with_description("An example CLI application")
+///         .with_name("Example App")
+///         .with_description("An example command line application")
 ///         .with_command(&app_main)
 ///         .build();  
 ///
 /// fn main() {
-///     EXAMPLE_APPLICATION.run()
+///     match EXAMPLE_APPLICATION.run() {
+///         Ok(ret) => {},  // handle return value
+///         Err(err) => {}, // handle command line error
+///     }
 /// }
-///  
+///
 /// fn app_main() {
 ///     println!("Hello, world!");
 /// }
@@ -47,8 +51,8 @@ pub struct Application<'a, R = ()> {
     flags: &'a [Flag<'a>],
     params: &'a [Parameter<'a>],
     subcommands: &'a [SubCommand<'a, R>],
-    command: Option<Command<'a, R>>,
-    // help: bool,
+    command: Option<Callback<'a, R>>,
+    help: bool,
     // version: bool,
 }
 
@@ -61,23 +65,27 @@ impl<'a, R> Application<'a, R> {
             params: None,
             subcommands: None,
             command: None,
-            //help: true,
+            help: true,
         }
     }
 
-    pub fn run(&self) -> R {
+    /// Parses the command line arguments from [std::env::args()](std::env::args) and dispatched to the appropriate command.
+    pub fn run(&self) -> Result<R, CommandLineError> {
         let mut args = env::args();
-        let _binary = args.next();
+        let _binary = args
+            .next()
+            .expect("Expected path to binary as first argument");
         self.execute(args)
     }
 
-    pub fn execute<T: AsRef<str>>(&self, args: impl Iterator<Item = T>) -> R {
-        match Executable::execute(self, args) {
-            Ok(result) => result,
-            Err(error) => {
-                panic!("Error: {:?}", error);
-            }
-        }
+    /// Parses the provided command line arguments and dispatched to the appropriate command.
+    ///
+    /// Note: this function does not skip the first argument (the binary path) that [run()](Self::run) does.
+    pub fn execute<T: AsRef<str>>(
+        &self,
+        args: impl Iterator<Item = T>,
+    ) -> Result<R, CommandLineError> {
+        Executable::execute(self, args)
     }
 
     pub const fn name(&self) -> &str {
@@ -107,8 +115,8 @@ pub struct ApplicationBuilder<'a, R> {
     flags: Option<&'a [Flag<'a>]>,
     params: Option<&'a [Parameter<'a>]>,
     subcommands: Option<&'a [SubCommand<'a, R>]>,
-    command: Option<Command<'a, R>>,
-    // help: bool,
+    command: Option<Callback<'a, R>>,
+    help: bool,
 }
 
 impl<'a, R> ApplicationBuilder<'a, R> {
@@ -137,15 +145,15 @@ impl<'a, R> ApplicationBuilder<'a, R> {
         self
     }
 
-    pub const fn with_command(mut self, command: Command<'a, R>) -> Self {
+    pub const fn with_command(mut self, command: Callback<'a, R>) -> Self {
         self.command = Some(command);
         self
     }
 
-    // pub const fn with_help(mut self, help: bool) -> Self {
-    //     self.help = help;
-    //     self
-    // }
+    pub const fn with_help(mut self, enabled: bool) -> Self {
+        self.help = enabled;
+        self
+    }
 
     pub const fn build(self) -> Application<'a, R> {
         let app = Application {
@@ -170,7 +178,7 @@ impl<'a, R> ApplicationBuilder<'a, R> {
                 None => &[],
             },
             command: self.command,
-            // help: self.help,
+            help: self.help,
         };
         assert!(
             app.command.is_some() || !app.subcommands.is_empty(),
@@ -180,7 +188,15 @@ impl<'a, R> ApplicationBuilder<'a, R> {
     }
 }
 
-impl<R> Executable<R> for Application<'_, R> {
+impl<R> Command<R> for Application<'_, R> {
+    fn name(&self) -> &str {
+        self.name
+    }
+
+    fn description(&self) -> &str {
+        self.description
+    }
+
     fn flags(&self) -> &[Flag] {
         self.flags
     }
@@ -193,7 +209,11 @@ impl<R> Executable<R> for Application<'_, R> {
         self.subcommands
     }
 
-    fn command(&self) -> Option<Command<R>> {
+    fn command(&self) -> Option<Callback<R>> {
         self.command
+    }
+
+    fn help_enabled(&self) -> bool {
+        self.help
     }
 }

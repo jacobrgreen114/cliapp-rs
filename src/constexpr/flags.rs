@@ -87,6 +87,10 @@ impl Argument for Flag<'_> {
     fn short_name(&self) -> &str {
         self.short_name
     }
+
+    fn description(&self) -> &str {
+        self.description
+    }
 }
 
 pub struct FlagBuilder<'a> {

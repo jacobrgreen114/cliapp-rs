@@ -1,6 +1,8 @@
 # cliutil
 Cliutil is planned to be a collection of utilities for command line interfaces.
 
+Changes can be found in the [changelog](CHANGELOG.md).
+
 ## Current State
 'cliutil' is currently very alpha.  It is not recommended for use in production code.
 

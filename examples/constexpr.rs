@@ -18,19 +18,30 @@ extern crate cliutil;
 
 use cliutil::constexpr as cli;
 
+/*
+   Flags
+*/
+
 static TEST_BOOL: cli::FlagValue = cli::FlagValue::new();
 
-// command line flag (e.g. -t --test)
-static EXAMPLE_FLAGS: &[cli::Flag] = &[cli::Flag::build()
-    .with_short_name("t")
-    .with_long_name("test")
-    .with_description("A test flag")
-    .with_flag(&TEST_BOOL)
-    .build()];
+static EXAMPLE_FLAGS: &[cli::Flag] = &[
+    // command line flag (e.g. -t --test)
+    cli::Flag::build()
+        .with_short_name("t")
+        .with_long_name("test")
+        .with_description("A test flag")
+        .with_flag(&TEST_BOOL)
+        .build(),
+];
+
+/*
+   Parameters
+*/
 
 static TEST_PARAM: cli::ParameterValue = cli::ParameterValue::new();
 
 static EXAMPLE_PARAMETERS: &[cli::Parameter] = &[
+    // command line parameter (e.g. -p <value> --param=<value>)
     cli::Parameter::build()
         .with_short_name("p")
         .with_long_name("param")
@@ -39,15 +50,22 @@ static EXAMPLE_PARAMETERS: &[cli::Parameter] = &[
         .build(),
 ];
 
-static EXAMPLE_SUBCOMMANDS: &[cli::SubCommand] = &[cli::SubCommand::build()
-    .with_long_name("headless")
-    .with_description("Runs the program in headless mode")
-    .with_command(&headless_main)
-    .build()];
+/*
+   Subcommands
+*/
+
+static EXAMPLE_SUBCOMMANDS: &[cli::SubCommand] = &[
+    // command line subcommand (e.g. headless)
+    cli::SubCommand::build()
+        .with_long_name("headless")
+        .with_description("Runs the program in headless mode.")
+        .with_command(&headless_main)
+        .build(),
+];
 
 static EXAMPLE_APPLICATION: cli::Application = cli::Application::build()
-    .with_name("Example Cli App")
-    .with_description("An example CLI application")
+    .with_name("Example App")
+    .with_description("An example command line application.")
     .with_flags(EXAMPLE_FLAGS)
     .with_parameters(EXAMPLE_PARAMETERS)
     .with_subcommands(EXAMPLE_SUBCOMMANDS)
@@ -55,7 +73,7 @@ static EXAMPLE_APPLICATION: cli::Application = cli::Application::build()
     .build();
 
 fn main() {
-    EXAMPLE_APPLICATION.run()
+    let _ = EXAMPLE_APPLICATION.run();
 }
 
 fn app_main() {

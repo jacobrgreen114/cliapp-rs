@@ -29,7 +29,8 @@ pub struct SubCommand<'a, R = ()> {
     flags: &'a [Flag<'a>],
     params: &'a [Parameter<'a>],
     subcommands: &'a [SubCommand<'a, R>],
-    command: Option<Command<'a, R>>,
+    command: Option<Callback<'a, R>>,
+    help: bool,
 }
 
 impl<'a, R> SubCommand<'a, R> {
@@ -41,6 +42,7 @@ impl<'a, R> SubCommand<'a, R> {
             params: None,
             subcommands: None,
             command: None,
+            help: true,
         }
     }
 
@@ -72,7 +74,8 @@ pub struct SubCommandBuilder<'a, R> {
     flags: Option<&'a [Flag<'a>]>,
     params: Option<&'a [Parameter<'a>]>,
     subcommands: Option<&'a [SubCommand<'a, R>]>,
-    command: Option<Command<'a, R>>,
+    command: Option<Callback<'a, R>>,
+    help: bool,
 }
 
 impl<'a, R> SubCommandBuilder<'a, R> {
@@ -101,8 +104,13 @@ impl<'a, R> SubCommandBuilder<'a, R> {
         self
     }
 
-    pub const fn with_command(mut self, command: Command<'a, R>) -> Self {
+    pub const fn with_command(mut self, command: Callback<'a, R>) -> Self {
         self.command = Some(command);
+        self
+    }
+
+    pub const fn with_help(mut self, enabled: bool) -> Self {
+        self.help = enabled;
         self
     }
 
@@ -129,6 +137,7 @@ impl<'a, R> SubCommandBuilder<'a, R> {
                 None => &[],
             },
             command: self.command,
+            help: self.help,
         };
 
         assert!(
@@ -140,7 +149,15 @@ impl<'a, R> SubCommandBuilder<'a, R> {
     }
 }
 
-impl<R> Executable<R> for SubCommand<'_, R> {
+impl<R> Command<R> for SubCommand<'_, R> {
+    fn name(&self) -> &str {
+        self.long_name
+    }
+
+    fn description(&self) -> &str {
+        self.description
+    }
+
     fn flags(&self) -> &[Flag] {
         self.flags
     }
@@ -153,7 +170,11 @@ impl<R> Executable<R> for SubCommand<'_, R> {
         self.subcommands
     }
 
-    fn command(&self) -> Option<Command<R>> {
+    fn command(&self) -> Option<Callback<R>> {
         self.command
+    }
+
+    fn help_enabled(&self) -> bool {
+        self.help
     }
 }
